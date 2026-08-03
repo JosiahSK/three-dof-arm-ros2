@@ -1,102 +1,86 @@
-# 3-DOF Robotic Arm — Manual Setup Guide (No Git Clone)
+#!/usr/bin/env bash
+###############################################################################
+# 3-DOF Robotic Arm — One-Shot Setup Script
+#
+# WHAT THIS DOES:
+#   Installs ROS 2 Jazzy + Gazebo Harmonic, creates a ROS 2 workspace, writes
+#   every source file the project needs (URDF/xacro, launch files, config,
+#   RViz layout, and a test script), then builds the workspace.
+#
+# HOW TO USE (copy-paste these 3 lines into a fresh Ubuntu 24.04 terminal):
+#   curl -O https://raw.githubusercontent.com/JosiahSK/three-dof-arm-ros2/humble/setup_arm.sh
+#   chmod +x setup_arm.sh
+#   ./setup_arm.sh
+#
+# You do NOT need to understand bash to run this — just paste and wait.
+# Every step below is commented so you can see what's happening and why.
+###############################################################################
 
-This guide provides step-by-step instructions to create, build, and run the **3-DOF Robotic Arm with Gripper** project on **Ubuntu 24.04 LTS** using **ROS 2 Jazzy** and **Gazebo Harmonic** entirely from scratch, without cloning the Git repository.
+set -e   # Stop the script immediately if any command fails, instead of
+         # plowing ahead and creating a broken workspace.
 
----
-
-## Table of Contents
-
-- [1. Prerequisites \& Installation](#1-prerequisites--installation)
-- [2. Workspace \& Package Structure Setup](#2-workspace--package-structure-setup)
-- [3. Project Source Files Recreation](#3-project-source-files-recreation)
-  - [3.1 `my_robot_description` Package](#31-my_robot_description-package)
-    - [3.1.1 `src/my_robot_description/package.xml`](#311-srcmy_robot_descriptionpackagexml)
-    - [3.1.2 `src/my_robot_description/CMakeLists.txt`](#312-srcmy_robot_descriptioncmakelists-txt)
-    - [3.1.3 `src/my_robot_description/urdf/arm.urdf.xacro`](#313-srcmy_robot_descriptionurdfarmurdfxacro)
-    - [3.1.4 `src/my_robot_description/urdf/arm_core.xacro`](#314-srcmy_robot_descriptionurdfarm_corexacro)
-    - [3.1.5 `src/my_robot_description/urdf/arm.ros2_control.xacro`](#315-srcmy_robot_descriptionurdfarmros2_controlxacro)
-    - [3.1.6 `src/my_robot_description/urdf/arm.gazebo.xacro`](#316-srcmy_robot_descriptionurdfarmgazeboxacro)
-    - [3.1.7 `src/my_robot_description/config/controller.yaml`](#317-srcmy_robot_descriptionconfigcontrolleryaml)
-    - [3.1.8 `src/my_robot_description/meshes/README.md`](#318-srcmy_robot_descriptionmeshesreadmemd)
-  - [3.2 `my_robot_bringup` Package](#32-my_robot_bringup-package)
-    - [3.2.1 `src/my_robot_bringup/package.xml`](#321-srcmy_robot_bringuppackagexml)
-    - [3.2.2 `src/my_robot_bringup/CMakeLists.txt`](#322-srcmy_robot_bringupcmakelists-txt)
-    - [3.2.3 `src/my_robot_bringup/launch/display.launch.py`](#323-srcmy_robot_bringuplaunchdisplaylaunchpy)
-    - [3.2.4 `src/my_robot_bringup/launch/gazebo.launch.py`](#324-srcmy_robot_bringuplaunchgazebolaunchpy)
-    - [3.2.5 `src/my_robot_bringup/rviz/display.rviz`](#325-srcmy_robot_bringuprvizdisplayrviz)
-    - [3.2.6 `src/my_robot_bringup/scripts/sample_trajectory_publisher.py`](#326-srcmy_robot_bringupscriptssample_trajectory_publisherpy)
-- [4. URDF / Xacro Robot Model Architecture](#4-urdf--xacro-robot-model-architecture)
-- [5. Launch Files \& Execution Flow](#5-launch-files--execution-flow)
-- [6. Full Build Sequence](#6-full-build-sequence)
-- [7. Launching and Testing the Simulation](#7-launching-and-testing-the-simulation)
-- [8. Troubleshooting Guide](#8-troubleshooting-guide)
-
----
-
-## 1. Prerequisites & Installation
-
-Ensure you are running **Ubuntu 24.04 LTS (Noble Numbat)**. Run the following terminal commands to install **ROS 2 Jazzy**, **Gazebo Harmonic**, `ros2_control`, `ros2_controllers`, `xacro`, and `joint_state_publisher_gui`:
-
-```bash
-# 1. Update system packages
+echo "=============================================="
+echo " STEP 1/6 — Installing system packages"
+echo "=============================================="
+# This step installs everything the project needs:
+#   - ros-jazzy-desktop        -> the ROS 2 Jazzy framework itself
+#   - ros-*-ros-gz*            -> lets ROS 2 talk to Gazebo Harmonic (the 3D physics simulator)
+#   - ros-*-ros2-control*      -> the framework that drives the arm's joints
+#   - ros-*-xacro              -> lets us write the robot model in reusable XML macros
+#   - ros-*-joint-state-publisher-gui -> gives you slider bars to move joints manually
+#   - python3-colcon-common-extensions -> the tool used to BUILD ROS 2 workspaces
+#   - python3-rosdep           -> auto-installs any dependency a package declares
 sudo apt update && sudo apt upgrade -y
 
-# 2. Install ROS 2 Jazzy Desktop (if not already installed)
 sudo apt install -y ros-jazzy-desktop
 
-# 3. Install Gazebo Harmonic and ROS 2 Integration packages
 sudo apt install -y \
   ros-jazzy-ros-gz \
   ros-jazzy-ros-gz-sim \
   ros-jazzy-ros-gz-bridge \
   ros-jazzy-gz-ros2-control
 
-# 4. Install ros2_control framework and controllers
 sudo apt install -y \
   ros-jazzy-ros2-control \
   ros-jazzy-ros2-controllers \
   ros-jazzy-joint-state-broadcaster \
   ros-jazzy-joint-trajectory-controller
 
-# 5. Install GUI tools, Xacro parser, and build utilities
 sudo apt install -y \
   ros-jazzy-xacro \
   ros-jazzy-joint-state-publisher-gui \
   python3-colcon-common-extensions \
   python3-rosdep
 
-# 6. Initialize rosdep (if not done previously)
+# rosdep init only needs to run once per machine — the "|| true" stops the
+# script from stopping if it's already been initialized before.
 sudo rosdep init 2>/dev/null || true
 rosdep update
-```
 
----
+# Load ROS 2 commands (like `ros2`, `colcon`) into this terminal session.
+source /opt/ros/jazzy/setup.bash
 
-## 2. Workspace & Package Structure Setup
 
-Create a dedicated ROS 2 workspace named `ros2_ws` and construct the exact folder hierarchy matching the project repository:
-
-```bash
-# Create workspace directory structure
+echo "=============================================="
+echo " STEP 2/6 — Creating the workspace folders"
+echo "=============================================="
+# A ROS 2 "workspace" is just a folder with a specific structure. We're
+# making two packages inside it:
+#   my_robot_description -> the robot's physical model (URDF/xacro) + controller config
+#   my_robot_bringup      -> the launch files that start everything up
 mkdir -p ~/ros2_ws/src/my_robot_description/urdf
 mkdir -p ~/ros2_ws/src/my_robot_description/config
 mkdir -p ~/ros2_ws/src/my_robot_description/meshes
 mkdir -p ~/ros2_ws/src/my_robot_bringup/launch
 mkdir -p ~/ros2_ws/src/my_robot_bringup/rviz
 mkdir -p ~/ros2_ws/src/my_robot_bringup/scripts
-```
 
----
 
-## 3. Project Source Files Recreation
+echo "=============================================="
+echo " STEP 3/6 — Writing the my_robot_description package"
+echo "=============================================="
 
-Execute the shell commands below to automatically generate each source file in its correct relative path.
-
-### 3.1 `my_robot_description` Package
-
-#### 3.1.1 `src/my_robot_description/package.xml`
-
-```bash
+# package.xml tells ROS 2 what this package is called and what it depends on.
 cat > ~/ros2_ws/src/my_robot_description/package.xml << 'EOF'
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
@@ -106,9 +90,7 @@ cat > ~/ros2_ws/src/my_robot_description/package.xml << 'EOF'
     <description>URDF description package for a 3-DOF robotic arm with gripper</description>
     <maintainer email="user@todo.todo">user</maintainer>
     <license>MIT</license>
-
     <buildtool_depend>ament_cmake</buildtool_depend>
-
     <exec_depend>robot_state_publisher</exec_depend>
     <exec_depend>joint_state_publisher_gui</exec_depend>
     <exec_depend>xacro</exec_depend>
@@ -116,72 +98,44 @@ cat > ~/ros2_ws/src/my_robot_description/package.xml << 'EOF'
     <exec_depend>ros2_controllers</exec_depend>
     <exec_depend>gz_ros2_control</exec_depend>
     <exec_depend>ros_gz_bridge</exec_depend>
-
     <export>
         <build_type>ament_cmake</build_type>
     </export>
 </package>
 EOF
-```
 
-> **Description**: The `package.xml` defines metadata for the `my_robot_description` ROS 2 package, specifying dependencies such as `robot_state_publisher`, `xacro`, `ros2_control`, `gz_ros2_control`, and `ros2_controllers` necessary for parsing the robot description and interacting with Gazebo Harmonic.
-
----
-
-#### 3.1.2 `src/my_robot_description/CMakeLists.txt`
-
-```bash
+# CMakeLists.txt tells the ROS 2 build tool (colcon) which folders to copy
+# into the "installed" version of this package so launch files can find them.
 cat > ~/ros2_ws/src/my_robot_description/CMakeLists.txt << 'EOF'
 cmake_minimum_required(VERSION 3.8)
 project(my_robot_description)
-
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
-
 find_package(ament_cmake REQUIRED)
-
-# Install URDF, config, and mesh directories
 install(
   DIRECTORY urdf config
   DESTINATION share/${PROJECT_NAME}
 )
-
 ament_package()
 EOF
-```
 
-> **Description**: The `CMakeLists.txt` configures `ament_cmake` build rules to install the `urdf/` and `config/` directories into the ROS 2 share directory (`share/my_robot_description`), allowing launch files and nodes to resolve robot models and configuration files dynamically at runtime.
-
----
-
-#### 3.1.3 `src/my_robot_description/urdf/arm.urdf.xacro`
-
-```bash
+# arm.urdf.xacro is the "main" robot file — it just pulls in the other
+# three xacro files below. Think of it as a table of contents.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm.urdf.xacro << 'EOF'
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="my_robot">
-
   <!-- Core robot links and joints -->
   <xacro:include filename="$(find my_robot_description)/urdf/arm_core.xacro" />
-
   <!-- ros2_control hardware interface block -->
   <xacro:include filename="$(find my_robot_description)/urdf/arm.ros2_control.xacro" />
-
   <!-- Gazebo Harmonic plugin block -->
   <xacro:include filename="$(find my_robot_description)/urdf/arm.gazebo.xacro" />
-
 </robot>
 EOF
-```
 
-> **Description**: This top-level Xacro file acts as the primary entry point for the robot description, combining the mechanical link/joint definitions (`arm_core.xacro`), the hardware interface setup (`arm.ros2_control.xacro`), and Gazebo Harmonic simulation plugins (`arm.gazebo.xacro`) into a single modular robot model named `my_robot`.
-
----
-
-#### 3.1.4 `src/my_robot_description/urdf/arm_core.xacro`
-
-```bash
+# arm_core.xacro is the actual shape of the robot: 5 rigid links joined by
+# 3 rotating joints (shoulder, elbow, wrist) plus 1 sliding gripper joint.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
@@ -189,12 +143,14 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
   <material name="gray"><color rgba="0.5 0.5 0.5 1"/></material>
   <material name="red"><color rgba="0.8 0.2 0.2 1"/></material>
 
+  <!-- base_link: the fixed platform the whole arm sits on -->
   <link name="base_link">
     <visual><geometry><cylinder radius="0.1" length="0.05"/></geometry><material name="gray"/></visual>
     <collision><geometry><cylinder radius="0.1" length="0.05"/></geometry></collision>
     <inertial><mass value="2.0"/><origin xyz="0 0 0"/><inertia ixx="0.0054" ixy="0.0" ixz="0.0" iyy="0.0054" iyz="0.0" izz="0.01"/></inertial>
   </link>
 
+  <!-- joint1: rotates the whole arm left/right (like a lazy Susan) -->
   <joint name="joint1" type="revolute">
     <parent link="base_link"/><child link="link1"/>
     <origin xyz="0 0 0.025" rpy="0 0 0"/><axis xyz="0 0 1"/>
@@ -207,6 +163,7 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
     <inertial><mass value="1.0"/><origin xyz="0 0 0.15" rpy="0 0 0"/><inertia ixx="0.008" ixy="0.0" ixz="0.0" iyy="0.008" iyz="0.0" izz="0.001"/></inertial>
   </link>
 
+  <!-- joint2: the "shoulder" pitch, tilts the upper arm up/down -->
   <joint name="joint2" type="revolute">
     <parent link="link1"/><child link="link2"/>
     <origin xyz="0 0 0.3" rpy="0 0 0"/><axis xyz="0 1 0"/>
@@ -219,6 +176,7 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
     <inertial><mass value="0.8"/><origin xyz="0 0 0.15" rpy="0 0 0"/><inertia ixx="0.006" ixy="0.0" ixz="0.0" iyy="0.006" iyz="0.0" izz="0.0006"/></inertial>
   </link>
 
+  <!-- joint3: the "elbow/wrist" pitch, tilts the forearm up/down -->
   <joint name="joint3" type="revolute">
     <parent link="link2"/><child link="link3"/>
     <origin xyz="0 0 0.3" rpy="0 0 0"/><axis xyz="0 1 0"/>
@@ -231,6 +189,7 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
     <inertial><mass value="0.5"/><origin xyz="0 0 0.05" rpy="0 0 0"/><inertia ixx="0.0005" ixy="0.0" ixz="0.0" iyy="0.0005" iyz="0.0" izz="0.0002"/></inertial>
   </link>
 
+  <!-- gripper_joint: slides open/closed to grab things (not a rotation!) -->
   <joint name="gripper_joint" type="prismatic">
     <parent link="link3"/><child link="gripper_link"/>
     <origin xyz="0 0 0.1" rpy="0 0 0"/><axis xyz="1 0 0"/>
@@ -245,15 +204,9 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
 
 </robot>
 EOF
-```
 
-> **Description**: `arm_core.xacro` defines the fundamental kinematics, dynamics, geometry, and visual colors for the manipulator arm. It specifies 5 rigid body links (`base_link`, `link1`, `link2`, `link3`, `gripper_link`) connected by 3 revolute joints (`joint1`, `joint2`, `joint3`) and 1 prismatic end-effector joint (`gripper_joint`), complete with inertial mass matrices for physics simulation.
-
----
-
-#### 3.1.5 `src/my_robot_description/urdf/arm.ros2_control.xacro`
-
-```bash
+# arm.ros2_control.xacro tells ROS 2 HOW to command each joint (position
+# control) and what feedback (position/velocity) it can read back.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm.ros2_control.xacro << 'EOF'
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <ros2_control name="GazeboSimSystem" type="system">
@@ -283,15 +236,9 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm.ros2_control.xacro << 'EOF'
   </ros2_control>
 </robot>
 EOF
-```
 
-> **Description**: This file configures the `ros2_control` tag, specifying `gz_ros2_control/GazeboSimSystem` as the hardware plugin interface. It defines position command interfaces and position/velocity feedback state interfaces for all 4 joints (`joint1`, `joint2`, `joint3`, and `gripper_joint`).
-
----
-
-#### 3.1.6 `src/my_robot_description/urdf/arm.gazebo.xacro`
-
-```bash
+# arm.gazebo.xacro plugs the robot into the Gazebo Harmonic simulator and
+# assigns simple colors so it doesn't render pure white/untextured.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm.gazebo.xacro << 'EOF'
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <gazebo>
@@ -306,15 +253,11 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm.gazebo.xacro << 'EOF'
   <gazebo reference="gripper_link"><material>Gazebo/Red</material></gazebo>
 </robot>
 EOF
-```
 
-> **Description**: This file integrates the `gz_ros2_control` system plugin into Gazebo Harmonic (`libgz_ros2_control-system.so`) and loads the controller parameter YAML file. Additionally, it assigns material colors (`Gazebo/Blue`, `Gazebo/Gray`, `Gazebo/Red`) for visual rendering inside Gazebo.
-
----
-
-#### 3.1.7 `src/my_robot_description/config/controller.yaml`
-
-```bash
+# controller.yaml configures WHICH controllers run and WHICH joints they
+# control. joint_state_broadcaster reports positions; arm_controller moves
+# the 3 arm joints; the gripper is handled the same way via the trajectory
+# interface.
 cat > ~/ros2_ws/src/my_robot_description/config/controller.yaml << 'EOF'
 controller_manager:
   ros__parameters:
@@ -337,32 +280,23 @@ arm_controller:
       - position
       - velocity
 EOF
-```
 
-> **Description**: The controller configuration YAML file parameterizes the `controller_manager`. It spawns a `joint_state_broadcaster` to publish active joint states and a `joint_trajectory_controller` (`arm_controller`) to control joint position trajectories for `joint1`, `joint2`, `joint3`, and `gripper_joint`.
-
----
-
-#### 3.1.8 `src/my_robot_description/meshes/README.md`
-
-```bash
+# Just a placeholder note — this project uses simple shapes, not custom
+# 3D models, so this folder stays empty for now.
 cat > ~/ros2_ws/src/my_robot_description/meshes/README.md << 'EOF'
 # Meshes
 
 Place robot mesh files here (STL, DAE, OBJ).
-Link links to this directory in URDF.
+Link to this directory from the URDF if you add custom 3D models later.
 EOF
-```
 
-> **Description**: A placeholder documentation file explaining where custom 3D mesh files (STL, DAE, OBJ) should be stored if custom CAD geometries are used instead of primitive geometric shapes.
 
----
+echo "=============================================="
+echo " STEP 4/6 — Writing the my_robot_bringup package"
+echo "=============================================="
 
-### 3.2 `my_robot_bringup` Package
-
-#### 3.2.1 `src/my_robot_bringup/package.xml`
-
-```bash
+# package.xml for the launch-file package — depends on the description
+# package above, plus RViz and Gazebo bridging tools.
 cat > ~/ros2_ws/src/my_robot_bringup/package.xml << 'EOF'
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
@@ -372,56 +306,35 @@ cat > ~/ros2_ws/src/my_robot_bringup/package.xml << 'EOF'
     <description>Bringup launch files for the 3-DOF robotic arm</description>
     <maintainer email="user@todo.todo">user</maintainer>
     <license>MIT</license>
-
     <buildtool_depend>ament_cmake</buildtool_depend>
-
     <exec_depend>my_robot_description</exec_depend>
     <exec_depend>robot_state_publisher</exec_depend>
     <exec_depend>joint_state_publisher_gui</exec_depend>
     <exec_depend>rviz2</exec_depend>
     <exec_depend>ros_gz_sim</exec_depend>
     <exec_depend>ros_gz_bridge</exec_depend>
-
     <export>
         <build_type>ament_cmake</build_type>
     </export>
 </package>
 EOF
-```
 
-> **Description**: Defines metadata and runtime dependencies for `my_robot_bringup`, depending on `my_robot_description`, `rviz2`, `ros_gz_sim`, `ros_gz_bridge`, and `joint_state_publisher_gui` to orchestrate visualization and Gazebo simulation launches.
-
----
-
-#### 3.2.2 `src/my_robot_bringup/CMakeLists.txt`
-
-```bash
 cat > ~/ros2_ws/src/my_robot_bringup/CMakeLists.txt << 'EOF'
 cmake_minimum_required(VERSION 3.8)
 project(my_robot_bringup)
-
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
-
 find_package(ament_cmake REQUIRED)
-
 install(
   DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
-
 ament_package()
 EOF
-```
 
-> **Description**: Configures `my_robot_bringup` build instructions to install the `launch/` directory into `share/my_robot_bringup`, making launch scripts accessible via `ros2 launch my_robot_bringup <script.launch.py>`.
-
----
-
-#### 3.2.3 `src/my_robot_bringup/launch/display.launch.py`
-
-```bash
+# display.launch.py = LIGHTWEIGHT MODE. No physics, no Gazebo — just RViz
+# plus manual sliders. Use this first to sanity-check the robot looks right.
 cat > ~/ros2_ws/src/my_robot_bringup/launch/display.launch.py << 'EOF'
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -429,7 +342,6 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
-
 
 def generate_launch_description():
     pkg_description = get_package_share_directory('my_robot_description')
@@ -461,30 +373,19 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        DeclareLaunchArgument(
-            name='model',
-            default_value=default_model_path,
-            description='Absolute path to robot URDF/xacro file'
-        ),
-        DeclareLaunchArgument(
-            name='rvizconfig',
-            default_value=default_rviz_path,
-            description='Absolute path to RViz config file'
-        ),
+        DeclareLaunchArgument(name='model', default_value=default_model_path,
+                               description='Absolute path to robot URDF/xacro file'),
+        DeclareLaunchArgument(name='rvizconfig', default_value=default_rviz_path,
+                               description='Absolute path to RViz config file'),
         robot_state_publisher_node,
         joint_state_publisher_gui_node,
         rviz_node
     ])
 EOF
-```
 
-> **Description**: Launch script for lightweight offline visualization in RViz2 without running physics simulation. It executes `robot_state_publisher` to parse the URDF/Xacro, launches `joint_state_publisher_gui` for interactive slider-based joint manipulation, and opens RViz2 with pre-configured camera and TF settings.
-
----
-
-#### 3.2.4 `src/my_robot_bringup/launch/gazebo.launch.py`
-
-```bash
+# gazebo.launch.py = FULL SIMULATION MODE. Boots Gazebo Harmonic, drops
+# the robot into an empty world, and auto-starts all the controllers so
+# the arm is immediately ready to accept motion commands.
 cat > ~/ros2_ws/src/my_robot_bringup/launch/gazebo.launch.py << 'EOF'
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -494,7 +395,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('my_robot_description')
@@ -515,11 +415,7 @@ def generate_launch_description():
 
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
-            PathJoinSubstitution([
-                FindPackageShare('ros_gz_sim'),
-                'launch',
-                'gz_sim.launch.py'
-            ])
+            PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])
         ]),
         launch_arguments={'gz_args': '-r empty.sdf'}.items()
     )
@@ -566,15 +462,9 @@ def generate_launch_description():
         gripper_controller_spawner,
     ])
 EOF
-```
 
-> **Description**: Main simulation launch file. It starts `robot_state_publisher`, boots Gazebo Harmonic (`ros_gz_sim`), spawns the robot into an empty simulation world, establishes a ROS-Gazebo clock bridge (`ros_gz_bridge`), and automatically spawns the `joint_state_broadcaster`, `arm_controller`, and `gripper_controller`.
-
----
-
-#### 3.2.5 `src/my_robot_bringup/rviz/display.rviz`
-
-```bash
+# display.rviz — a saved camera angle + display settings so RViz opens
+# already looking at the robot instead of a blank gray screen.
 cat > ~/ros2_ws/src/my_robot_bringup/rviz/display.rviz << 'EOF'
 Panels:
   - Class: rviz_common/Displays
@@ -657,15 +547,10 @@ Window Geometry:
     X: 100
     Y: 100
 EOF
-```
 
-> **Description**: The RViz2 display configuration file sets `base_link` as the fixed reference frame, adds a ground reference grid, displays the 3D robot model from topic `/robot_description`, and sets up an isometric orbital camera angle for optimal viewing.
-
----
-
-#### 3.2.6 `src/my_robot_bringup/scripts/sample_trajectory_publisher.py`
-
-```bash
+# sample_trajectory_publisher.py — a test script that alternates the arm
+# between two poses every 3 seconds, so you can confirm the controllers
+# are actually working once Gazebo is running.
 cat > ~/ros2_ws/src/my_robot_bringup/scripts/sample_trajectory_publisher.py << 'EOF'
 #!/usr/bin/env python3
 """
@@ -679,7 +564,6 @@ from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 import math
-
 
 class SampleTrajectoryPublisher(Node):
 
@@ -716,7 +600,6 @@ class SampleTrajectoryPublisher(Node):
         self.gripper_pub.publish(gripper_msg)
         self.step += 1
 
-
 def main(args=None):
     rclpy.init(args=args)
     node = SampleTrajectoryPublisher()
@@ -728,126 +611,42 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
-
 if __name__ == '__main__':
     main()
 EOF
 
-# Grant executable permission to the script
+# The script above must be marked executable or `ros2 run` will refuse to run it.
 chmod +x ~/ros2_ws/src/my_robot_bringup/scripts/sample_trajectory_publisher.py
-```
 
-> **Description**: A Python ROS 2 node that periodically publishes joint trajectory commands (`trajectory_msgs/msg/JointTrajectory`) every 3 seconds to `/arm_controller/joint_trajectory` and `/gripper_controller/joint_trajectory`, alternating between two target arm configurations to verify dynamic motion control in simulation.
 
----
-
-## 4. URDF / Xacro Robot Model Architecture
-
-The robot model uses a clean, modular XML Macro (`xacro`) structure:
-
-- **Root File (`arm.urdf.xacro`)**: Combines core geometry (`arm_core.xacro`), hardware interfaces (`arm.ros2_control.xacro`), and simulation plugins (`arm.gazebo.xacro`) into a clean unified representation using `<xacro:include>` directives.
-- **Kinematic Chain (`arm_core.xacro`)**:
-  - `base_link`: Cylindrical ground mounting plate (radius `0.1m`, height `0.05m`).
-  - `joint1` (Revolute): Rotates around Z-axis (`[0, 0, 1]`) between `-180°` (`-3.14 rad`) and `+180°` (`+3.14 rad`). Connects `base_link` to `link1`.
-  - `link1`: Vertical arm link (height `0.3m`, radius `0.05m`).
-  - `joint2` (Revolute): Pitch joint rotating around Y-axis (`[0, 1, 0]`) between `-90°` (`-1.57 rad`) and `+90°` (`+1.57 rad`). Connects `link1` to `link2`.
-  - `link2`: Forearm link (length `0.3m`, radius `0.04m`).
-  - `joint3` (Revolute): Wrist pitch joint rotating around Y-axis (`[0, 1, 0]`) between `-90°` (`-1.57 rad`) and `+90°` (`+1.57 rad`). Connects `link2` to `link3`.
-  - `link3`: Wrist box block (dimensions `0.05 x 0.05 x 0.1m`).
-  - `gripper_joint` (Prismatic): Linear motion along X-axis (`[1, 0, 0]`) ranging from `-0.02m` to `+0.02m`. Connects `link3` to `gripper_link`.
-  - `gripper_link`: Rectangular end-effector tool.
-
----
-
-## 5. Launch Files & Execution Flow
-
-1. **`display.launch.py` (Visualization Mode)**:
-   - Used for quick mechanical checks without loading heavy physics engine overhead.
-   - Starts `robot_state_publisher` to calculate transformation matrices.
-   - Starts `joint_state_publisher_gui` offering manual sliders to test joint limits.
-   - Launches RViz2 with pre-configured camera angle.
-
-2. **`gazebo.launch.py` (Full Physics Simulation Mode)**:
-   - Starts `robot_state_publisher` in simulation time mode (`use_sim_time: True`).
-   - Launches Gazebo Harmonic (`gz_sim`) in an empty world (`empty.sdf`).
-   - Spawns the robot model into Gazebo using the `create` node.
-   - Launches `ros_gz_bridge` to synchronize ROS and Gazebo simulation clocks.
-   - Automatically loads and activates `joint_state_broadcaster`, `arm_controller`, and `gripper_controller` via `controller_manager/spawner`.
-
----
-
-## 6. Full Build Sequence
-
-Run the following commands from your terminal to install any missing workspace dependencies, compile the ROS 2 packages, and source the overlay environment:
-
-```bash
-# 1. Navigate to workspace root
+echo "=============================================="
+echo " STEP 5/6 — Installing dependencies & building"
+echo "=============================================="
 cd ~/ros2_ws
 
-# 2. Automatically resolve missing package dependencies
+# rosdep scans package.xml files and installs anything missing that apt
+# hasn't already covered.
 rosdep install --from-paths src --ignore-src -r -y
 
-# 3. Build workspace packages using symlink installation
+# colcon build compiles/copies both packages into ~/ros2_ws/install.
+# --symlink-install means editing a Python/launch file later takes effect
+# immediately, without rebuilding.
 colcon build --symlink-install
 
-# 4. Source the workspace overlay environment
+# Load the newly built packages into this terminal.
 source install/setup.bash
-```
 
-> [!TIP]
-> Add `source ~/ros2_ws/install/setup.bash` to your `~/.bashrc` file to automatically source this workspace whenever you open a new terminal window.
 
----
-
-## 7. Launching and Testing the Simulation
-
-Follow these step-by-step commands to visualize and run the arm simulation:
-
-### Option A: Offline Joint Slider Testing in RViz2
-
-Open a terminal and run:
-
-```bash
-cd ~/ros2_ws
-source install/setup.bash
-ros2 launch my_robot_bringup display.launch.py
-```
-*An RViz2 window and a GUI window with joint position sliders will open. Move the sliders to test joint rotations.*
-
----
-
-### Option B: Gazebo Harmonic Physics Simulation
-
-Open a new terminal and run:
-
-```bash
-cd ~/ros2_ws
-source install/setup.bash
-ros2 launch my_robot_bringup gazebo.launch.py
-```
-*Gazebo Harmonic will launch with the 3-DOF arm spawned at origin, and controllers will initialize automatically.*
-
----
-
-### Option C: Automated Trajectory Control Test
-
-With `gazebo.launch.py` running in your first terminal, open a **second terminal** and run the test script:
-
-```bash
-cd ~/ros2_ws
-source install/setup.bash
-ros2 run my_robot_bringup sample_trajectory_publisher.py
-```
-*The script will publish joint trajectory commands every 3 seconds, causing the robot arm to alternate between Position A and Position B in Gazebo.*
-
----
-
-## 8. Troubleshooting Guide
-
-| Issue / Symptom | Probable Cause | Recommended Fix |
-|---|---|---|
-| `Package 'my_robot_bringup' not found` | Workspace environment not sourced in current terminal. | Run `source ~/ros2_ws/install/setup.bash` in the terminal before running `ros2 launch`. |
-| `gz_ros2_control` plugin failure or controller timeout | Missing `ros_gz` or `ros2_control` packages for Jazzy. | Run `sudo apt install -y ros-jazzy-ros-gz-sim ros-jazzy-gz-ros2-control ros-jazzy-ros2-controllers`. |
-| `Permission denied` when running `sample_trajectory_publisher.py` | Python script lacks execute permissions. | Run `chmod +x ~/ros2_ws/src/my_robot_bringup/scripts/sample_trajectory_publisher.py`. |
-| Robot arm appears white or broken in RViz2 | Fixed Frame is set incorrectly or missing joint states. | Ensure Fixed Frame in RViz is set to `base_link` and `robot_state_publisher` is active. |
-| Empty Gazebo window with no robot model | `ros_gz_sim` spawn service failed or timed out during launch. | Verify Gazebo started properly, or run `ros2 launch my_robot_bringup gazebo.launch.py` again. |
+echo "=============================================="
+echo " STEP 6/6 — Done!"
+echo "=============================================="
+echo ""
+echo "To use this workspace in ANY new terminal, run this first:"
+echo "    source ~/ros2_ws/install/setup.bash"
+echo ""
+echo "(Tip: add that line to ~/.bashrc so it happens automatically.)"
+echo ""
+echo "Now try one of these:"
+echo "  ros2 launch my_robot_bringup display.launch.py   # RViz + manual sliders, no physics"
+echo "  ros2 launch my_robot_bringup gazebo.launch.py     # Full Gazebo Harmonic simulation"
+echo "  ros2 run my_robot_bringup sample_trajectory_publisher.py  # auto-move test (run in a 2nd terminal, after gazebo.launch.py)"
