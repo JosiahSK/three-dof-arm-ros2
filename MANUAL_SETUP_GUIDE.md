@@ -1,8 +1,10 @@
 # 3-DOF Robotic Arm — Beginner Setup Guide (No Git Clone)
 
-This guide builds the **3-DOF Robotic Arm with Gripper** project from scratch on **Ubuntu 24.04**, using **ROS 2 Jazzy** and **Gazebo Harmonic** — without cloning the repo. Every command is explained *before* you run it, and related commands are grouped into single copy-paste blocks so you're never jumping around.
+This guide builds the **3-DOF Robotic Arm with Gripper** project from scratch on **Ubuntu 22.04**, using **ROS 2 Humble** and **Gazebo Fortress** — without cloning the repo. Every command is explained *before* you run it, and related commands are grouped into single copy-paste blocks so you're never jumping around.
 
 > 🚀 **In a hurry?** Skip straight to [Option 0: One-Shot Script](#option-0-one-shot-script-fastest) and paste 3 lines instead of following the whole guide.
+
+> ℹ️ **Why Fortress, not Harmonic?** ROS 2 Humble's officially supported Gazebo version (via `apt`) is **Gazebo Fortress**, not Harmonic — Harmonic is what ROS 2 Jazzy pairs with. If a tutorial elsewhere shows "Harmonic" commands, that's for Jazzy, not this guide. The plugin names used in the code below (`gz_ros2_control`, `libgz_ros2_control-system.so`) are identical either way, so nothing else in the project changes.
 
 ## Table of Contents
 1. [Option 0: One-Shot Script (fastest)](#option-0-one-shot-script-fastest)
@@ -45,8 +47,8 @@ That's it — skip to [Step 6 — Run It](#step-6--run-it) once it finishes. If 
 We need five groups of software:
 | Group | What it's for |
 |---|---|
-| `ros-jazzy-desktop` | The ROS 2 Jazzy framework itself |
-| `ros-*-ros-gz*` | Lets ROS 2 talk to the Gazebo Harmonic physics simulator |
+| `ros-humble-desktop` | The ROS 2 Humble framework itself |
+| `ros-*-ros-gz*` | Lets ROS 2 talk to the Gazebo Fortress physics simulator (Humble’s default) |
 | `ros-*-ros2-control*` | The framework that actually drives the arm's joints |
 | `ros-*-xacro`, `joint-state-publisher-gui` | Robot-description tooling + manual joint sliders |
 | `colcon`, `rosdep` | The tools used to build and dependency-check the workspace |
@@ -56,19 +58,19 @@ Paste this whole block — it installs everything and only needs to run once:
 ```bash
 sudo apt update && sudo apt upgrade -y
 
-sudo apt install -y ros-jazzy-desktop
+sudo apt install -y ros-humble-desktop
 
 sudo apt install -y \
-  ros-jazzy-ros-gz \
-  ros-jazzy-ros-gz-sim \
-  ros-jazzy-ros-gz-bridge \
-  ros-jazzy-gz-ros2-control \
-  ros-jazzy-ros2-control \
-  ros-jazzy-ros2-controllers \
-  ros-jazzy-joint-state-broadcaster \
-  ros-jazzy-joint-trajectory-controller \
-  ros-jazzy-xacro \
-  ros-jazzy-joint-state-publisher-gui \
+  ros-humble-ros-gz \
+  ros-humble-ros-gz-sim \
+  ros-humble-ros-gz-bridge \
+  ros-humble-gz-ros2-control \
+  ros-humble-ros2-control \
+  ros-humble-ros2-controllers \
+  ros-humble-joint-state-broadcaster \
+  ros-humble-joint-trajectory-controller \
+  ros-humble-xacro \
+  ros-humble-joint-state-publisher-gui \
   python3-colcon-common-extensions \
   python3-rosdep
 
@@ -78,7 +80,7 @@ sudo rosdep init 2>/dev/null || true
 rosdep update
 
 # Load ROS 2 commands into this terminal (do this in every NEW terminal too).
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/humble/setup.bash
 ```
 
 ---
@@ -254,7 +256,7 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm.ros2_control.xacro << 'EOF'
 </robot>
 EOF
 
-# arm.gazebo.xacro — plugs the robot into Gazebo Harmonic and gives each
+# arm.gazebo.xacro — plugs the robot into Gazebo Fortress and gives each
 # part a color so it doesn't render as plain white.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm.gazebo.xacro << 'EOF'
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
@@ -400,7 +402,7 @@ def generate_launch_description():
     ])
 EOF
 
-# gazebo.launch.py — FULL SIMULATION MODE: boots Gazebo Harmonic, spawns
+# gazebo.launch.py — FULL SIMULATION MODE: boots Gazebo Fortress, spawns
 # the robot into an empty world, and auto-starts every controller.
 cat > ~/ros2_ws/src/my_robot_bringup/launch/gazebo.launch.py << 'EOF'
 import os
@@ -675,7 +677,7 @@ RViz2 and a slider GUI open. Drag the sliders to test each joint moves correctly
 cd ~/ros2_ws && source install/setup.bash
 ros2 launch my_robot_bringup gazebo.launch.py
 ```
-Gazebo Harmonic opens with the arm spawned and all controllers active.
+Gazebo Fortress opens with the arm spawned and all controllers active.
 
 ### C. Auto-move test (run in a **second terminal**, while B is still running)
 ```bash
@@ -705,7 +707,7 @@ The xacro files are split by purpose so each stays simple: `arm_core.xacro` (sha
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Package 'my_robot_bringup' not found` | Workspace not sourced in this terminal | `source ~/ros2_ws/install/setup.bash` |
-| Controller/plugin timeout in Gazebo | Missing `ros_gz`/`ros2_control` packages | `sudo apt install -y ros-jazzy-ros-gz-sim ros-jazzy-gz-ros2-control ros-jazzy-ros2-controllers` |
+| Controller/plugin timeout in Gazebo | Missing `ros_gz`/`ros2_control` packages | `sudo apt install -y ros-humble-ros-gz-sim ros-humble-gz-ros2-control ros-humble-ros2-controllers` |
 | `Permission denied` running the test script | Script isn't executable | `chmod +x ~/ros2_ws/src/my_robot_bringup/scripts/sample_trajectory_publisher.py` |
 | Arm looks broken/white in RViz | Wrong Fixed Frame or no joint states | Set Fixed Frame to `base_link`; confirm `robot_state_publisher` is running |
 | Empty Gazebo window, no robot | Spawn service timed out | Re-run `ros2 launch my_robot_bringup gazebo.launch.py` |
