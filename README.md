@@ -35,4 +35,4 @@ A **complete, production-ready** ROS 2 workspace for simulating and controlling 
 ## Repository Structure
 
 ```
-three-dof-arm-ros2-jazzy/
+three-dof-arm-ros2/
