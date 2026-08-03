@@ -1,35 +1,59 @@
-#!/usr/bin/env bash
-###############################################################################
-# 3-DOF Robotic Arm — One-Shot Setup Script
-#
-# WHAT THIS DOES:
-#   Installs ROS 2 Jazzy + Gazebo Harmonic, creates a ROS 2 workspace, writes
-#   every source file the project needs (URDF/xacro, launch files, config,
-#   RViz layout, and a test script), then builds the workspace.
-#
-# HOW TO USE (copy-paste these 3 lines into a fresh Ubuntu 24.04 terminal):
-#   curl -O https://raw.githubusercontent.com/JosiahSK/three-dof-arm-ros2/humble/setup_arm.sh
-#   chmod +x setup_arm.sh
-#   ./setup_arm.sh
-#
-# You do NOT need to understand bash to run this — just paste and wait.
-# Every step below is commented so you can see what's happening and why.
-###############################################################################
+# 3-DOF Robotic Arm — Beginner Setup Guide (No Git Clone)
 
-set -e   # Stop the script immediately if any command fails, instead of
-         # plowing ahead and creating a broken workspace.
+This guide builds the **3-DOF Robotic Arm with Gripper** project from scratch on **Ubuntu 24.04**, using **ROS 2 Jazzy** and **Gazebo Harmonic** — without cloning the repo. Every command is explained *before* you run it, and related commands are grouped into single copy-paste blocks so you're never jumping around.
 
-echo "=============================================="
-echo " STEP 1/6 — Installing system packages"
-echo "=============================================="
-# This step installs everything the project needs:
-#   - ros-jazzy-desktop        -> the ROS 2 Jazzy framework itself
-#   - ros-*-ros-gz*            -> lets ROS 2 talk to Gazebo Harmonic (the 3D physics simulator)
-#   - ros-*-ros2-control*      -> the framework that drives the arm's joints
-#   - ros-*-xacro              -> lets us write the robot model in reusable XML macros
-#   - ros-*-joint-state-publisher-gui -> gives you slider bars to move joints manually
-#   - python3-colcon-common-extensions -> the tool used to BUILD ROS 2 workspaces
-#   - python3-rosdep           -> auto-installs any dependency a package declares
+> 🚀 **In a hurry?** Skip straight to [Option 0: One-Shot Script](#option-0-one-shot-script-fastest) and paste 3 lines instead of following the whole guide.
+
+## Table of Contents
+1. [Option 0: One-Shot Script (fastest)](#option-0-one-shot-script-fastest)
+2. [How This Guide Works](#how-this-guide-works)
+3. [Step 1 — Install Everything](#step-1--install-everything)
+4. [Step 2 — Create the Workspace Folders](#step-2--create-the-workspace-folders)
+5. [Step 3 — Build the `my_robot_description` Package](#step-3--build-the-my_robot_description-package)
+6. [Step 4 — Build the `my_robot_bringup` Package](#step-4--build-the-my_robot_bringup-package)
+7. [Step 5 — Compile the Workspace](#step-5--compile-the-workspace)
+8. [Step 6 — Run It](#step-6--run-it)
+9. [Understanding the Robot Model](#understanding-the-robot-model)
+10. [Troubleshooting](#troubleshooting)
+
+---
+
+## Option 0: One-Shot Script (fastest)
+
+If you just want the whole thing built with minimal fuss, download and run `setup_arm.sh` — it does every step below automatically, with comments inside explaining each part as it runs.
+
+```bash
+curl -O https://raw.githubusercontent.com/JosiahSK/three-dof-arm-ros2/humble/setup_arm.sh
+chmod +x setup_arm.sh
+./setup_arm.sh
+```
+
+That's it — skip to [Step 6 — Run It](#step-6--run-it) once it finishes. If you'd rather understand *what* you're building as you go, keep reading from Step 1 instead.
+
+---
+
+## How This Guide Works
+
+- Every code block below is **safe to paste as one chunk** — you don't need to run lines individually.
+- Blocks that start with `cat > path/to/file << 'EOF' ... EOF` **create a file** — everything between the two `EOF` markers becomes that file's content. This is how we write project files without cloning or using a text editor.
+- Read the paragraph *above* each block before pasting — it tells you what you're about to create and why.
+
+---
+
+## Step 1 — Install Everything
+
+We need five groups of software:
+| Group | What it's for |
+|---|---|
+| `ros-jazzy-desktop` | The ROS 2 Jazzy framework itself |
+| `ros-*-ros-gz*` | Lets ROS 2 talk to the Gazebo Harmonic physics simulator |
+| `ros-*-ros2-control*` | The framework that actually drives the arm's joints |
+| `ros-*-xacro`, `joint-state-publisher-gui` | Robot-description tooling + manual joint sliders |
+| `colcon`, `rosdep` | The tools used to build and dependency-check the workspace |
+
+Paste this whole block — it installs everything and only needs to run once:
+
+```bash
 sudo apt update && sudo apt upgrade -y
 
 sudo apt install -y ros-jazzy-desktop
@@ -38,49 +62,50 @@ sudo apt install -y \
   ros-jazzy-ros-gz \
   ros-jazzy-ros-gz-sim \
   ros-jazzy-ros-gz-bridge \
-  ros-jazzy-gz-ros2-control
-
-sudo apt install -y \
+  ros-jazzy-gz-ros2-control \
   ros-jazzy-ros2-control \
   ros-jazzy-ros2-controllers \
   ros-jazzy-joint-state-broadcaster \
-  ros-jazzy-joint-trajectory-controller
-
-sudo apt install -y \
+  ros-jazzy-joint-trajectory-controller \
   ros-jazzy-xacro \
   ros-jazzy-joint-state-publisher-gui \
   python3-colcon-common-extensions \
   python3-rosdep
 
-# rosdep init only needs to run once per machine — the "|| true" stops the
-# script from stopping if it's already been initialized before.
+# rosdep only needs to be initialized once per machine — safe to ignore
+# a "already initialized" message here.
 sudo rosdep init 2>/dev/null || true
 rosdep update
 
-# Load ROS 2 commands (like `ros2`, `colcon`) into this terminal session.
+# Load ROS 2 commands into this terminal (do this in every NEW terminal too).
 source /opt/ros/jazzy/setup.bash
+```
 
+---
 
-echo "=============================================="
-echo " STEP 2/6 — Creating the workspace folders"
-echo "=============================================="
-# A ROS 2 "workspace" is just a folder with a specific structure. We're
-# making two packages inside it:
-#   my_robot_description -> the robot's physical model (URDF/xacro) + controller config
-#   my_robot_bringup      -> the launch files that start everything up
+## Step 2 — Create the Workspace Folders
+
+A ROS 2 **workspace** is just a folder (`~/ros2_ws`) containing **packages**. This project has two packages:
+- `my_robot_description` — the robot's physical shape (URDF/xacro) + controller settings
+- `my_robot_bringup` — the launch files that start RViz or Gazebo
+
+```bash
 mkdir -p ~/ros2_ws/src/my_robot_description/urdf
 mkdir -p ~/ros2_ws/src/my_robot_description/config
 mkdir -p ~/ros2_ws/src/my_robot_description/meshes
 mkdir -p ~/ros2_ws/src/my_robot_bringup/launch
 mkdir -p ~/ros2_ws/src/my_robot_bringup/rviz
 mkdir -p ~/ros2_ws/src/my_robot_bringup/scripts
+```
 
+---
 
-echo "=============================================="
-echo " STEP 3/6 — Writing the my_robot_description package"
-echo "=============================================="
+## Step 3 — Build the `my_robot_description` Package
 
-# package.xml tells ROS 2 what this package is called and what it depends on.
+This single block creates all 7 files for this package at once: the package metadata, build instructions, the robot's 3D shape, its motor/controller wiring, its Gazebo plugin hookup, and its controller settings.
+
+```bash
+# package.xml — tells ROS 2 this package's name and what it depends on.
 cat > ~/ros2_ws/src/my_robot_description/package.xml << 'EOF'
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
@@ -104,8 +129,8 @@ cat > ~/ros2_ws/src/my_robot_description/package.xml << 'EOF'
 </package>
 EOF
 
-# CMakeLists.txt tells the ROS 2 build tool (colcon) which folders to copy
-# into the "installed" version of this package so launch files can find them.
+# CMakeLists.txt — tells the build tool to copy urdf/ and config/ into the
+# installed package so launch files can find them later.
 cat > ~/ros2_ws/src/my_robot_description/CMakeLists.txt << 'EOF'
 cmake_minimum_required(VERSION 3.8)
 project(my_robot_description)
@@ -120,22 +145,19 @@ install(
 ament_package()
 EOF
 
-# arm.urdf.xacro is the "main" robot file — it just pulls in the other
-# three xacro files below. Think of it as a table of contents.
+# arm.urdf.xacro — the "table of contents" file that pulls the next three
+# files together into one robot.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm.urdf.xacro << 'EOF'
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="my_robot">
-  <!-- Core robot links and joints -->
   <xacro:include filename="$(find my_robot_description)/urdf/arm_core.xacro" />
-  <!-- ros2_control hardware interface block -->
   <xacro:include filename="$(find my_robot_description)/urdf/arm.ros2_control.xacro" />
-  <!-- Gazebo Harmonic plugin block -->
   <xacro:include filename="$(find my_robot_description)/urdf/arm.gazebo.xacro" />
 </robot>
 EOF
 
-# arm_core.xacro is the actual shape of the robot: 5 rigid links joined by
-# 3 rotating joints (shoulder, elbow, wrist) plus 1 sliding gripper joint.
+# arm_core.xacro — the actual 3D shape: 5 rigid links joined by 3 rotating
+# joints (like shoulder, elbow, wrist) plus 1 sliding gripper joint.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
@@ -143,14 +165,12 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
   <material name="gray"><color rgba="0.5 0.5 0.5 1"/></material>
   <material name="red"><color rgba="0.8 0.2 0.2 1"/></material>
 
-  <!-- base_link: the fixed platform the whole arm sits on -->
   <link name="base_link">
     <visual><geometry><cylinder radius="0.1" length="0.05"/></geometry><material name="gray"/></visual>
     <collision><geometry><cylinder radius="0.1" length="0.05"/></geometry></collision>
     <inertial><mass value="2.0"/><origin xyz="0 0 0"/><inertia ixx="0.0054" ixy="0.0" ixz="0.0" iyy="0.0054" iyz="0.0" izz="0.01"/></inertial>
   </link>
 
-  <!-- joint1: rotates the whole arm left/right (like a lazy Susan) -->
   <joint name="joint1" type="revolute">
     <parent link="base_link"/><child link="link1"/>
     <origin xyz="0 0 0.025" rpy="0 0 0"/><axis xyz="0 0 1"/>
@@ -163,7 +183,6 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
     <inertial><mass value="1.0"/><origin xyz="0 0 0.15" rpy="0 0 0"/><inertia ixx="0.008" ixy="0.0" ixz="0.0" iyy="0.008" iyz="0.0" izz="0.001"/></inertial>
   </link>
 
-  <!-- joint2: the "shoulder" pitch, tilts the upper arm up/down -->
   <joint name="joint2" type="revolute">
     <parent link="link1"/><child link="link2"/>
     <origin xyz="0 0 0.3" rpy="0 0 0"/><axis xyz="0 1 0"/>
@@ -176,7 +195,6 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
     <inertial><mass value="0.8"/><origin xyz="0 0 0.15" rpy="0 0 0"/><inertia ixx="0.006" ixy="0.0" ixz="0.0" iyy="0.006" iyz="0.0" izz="0.0006"/></inertial>
   </link>
 
-  <!-- joint3: the "elbow/wrist" pitch, tilts the forearm up/down -->
   <joint name="joint3" type="revolute">
     <parent link="link2"/><child link="link3"/>
     <origin xyz="0 0 0.3" rpy="0 0 0"/><axis xyz="0 1 0"/>
@@ -189,7 +207,6 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
     <inertial><mass value="0.5"/><origin xyz="0 0 0.05" rpy="0 0 0"/><inertia ixx="0.0005" ixy="0.0" ixz="0.0" iyy="0.0005" iyz="0.0" izz="0.0002"/></inertial>
   </link>
 
-  <!-- gripper_joint: slides open/closed to grab things (not a rotation!) -->
   <joint name="gripper_joint" type="prismatic">
     <parent link="link3"/><child link="gripper_link"/>
     <origin xyz="0 0 0.1" rpy="0 0 0"/><axis xyz="1 0 0"/>
@@ -205,8 +222,8 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm_core.xacro << 'EOF'
 </robot>
 EOF
 
-# arm.ros2_control.xacro tells ROS 2 HOW to command each joint (position
-# control) and what feedback (position/velocity) it can read back.
+# arm.ros2_control.xacro — tells ROS 2 HOW to command each joint (position
+# control) and what feedback (position/velocity) it reads back.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm.ros2_control.xacro << 'EOF'
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <ros2_control name="GazeboSimSystem" type="system">
@@ -237,8 +254,8 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm.ros2_control.xacro << 'EOF'
 </robot>
 EOF
 
-# arm.gazebo.xacro plugs the robot into the Gazebo Harmonic simulator and
-# assigns simple colors so it doesn't render pure white/untextured.
+# arm.gazebo.xacro — plugs the robot into Gazebo Harmonic and gives each
+# part a color so it doesn't render as plain white.
 cat > ~/ros2_ws/src/my_robot_description/urdf/arm.gazebo.xacro << 'EOF'
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <gazebo>
@@ -254,10 +271,9 @@ cat > ~/ros2_ws/src/my_robot_description/urdf/arm.gazebo.xacro << 'EOF'
 </robot>
 EOF
 
-# controller.yaml configures WHICH controllers run and WHICH joints they
-# control. joint_state_broadcaster reports positions; arm_controller moves
-# the 3 arm joints; the gripper is handled the same way via the trajectory
-# interface.
+# controller.yaml — configures which controllers run and which joints
+# they manage: a state broadcaster (reports positions) and a trajectory
+# controller (moves joint1/2/3 + the gripper).
 cat > ~/ros2_ws/src/my_robot_description/config/controller.yaml << 'EOF'
 controller_manager:
   ros__parameters:
@@ -281,22 +297,23 @@ arm_controller:
       - velocity
 EOF
 
-# Just a placeholder note — this project uses simple shapes, not custom
+# Placeholder note — this project uses simple built-in shapes, not custom
 # 3D models, so this folder stays empty for now.
 cat > ~/ros2_ws/src/my_robot_description/meshes/README.md << 'EOF'
 # Meshes
-
-Place robot mesh files here (STL, DAE, OBJ).
-Link to this directory from the URDF if you add custom 3D models later.
+Place robot mesh files here (STL, DAE, OBJ) if you add custom 3D models later.
 EOF
+```
 
+---
 
-echo "=============================================="
-echo " STEP 4/6 — Writing the my_robot_bringup package"
-echo "=============================================="
+## Step 4 — Build the `my_robot_bringup` Package
 
-# package.xml for the launch-file package — depends on the description
-# package above, plus RViz and Gazebo bridging tools.
+This block creates the 6 files that start everything up: package metadata, build instructions, two launch modes (visualize-only vs. full simulation), a saved RViz camera view, and a test script that moves the arm automatically.
+
+```bash
+# package.xml — depends on the description package above, plus RViz and
+# Gazebo bridging tools.
 cat > ~/ros2_ws/src/my_robot_bringup/package.xml << 'EOF'
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
@@ -333,8 +350,8 @@ install(
 ament_package()
 EOF
 
-# display.launch.py = LIGHTWEIGHT MODE. No physics, no Gazebo — just RViz
-# plus manual sliders. Use this first to sanity-check the robot looks right.
+# display.launch.py — LIGHTWEIGHT MODE: no physics, no Gazebo. Just RViz
+# plus manual joint sliders. Use this first to sanity-check the model.
 cat > ~/ros2_ws/src/my_robot_bringup/launch/display.launch.py << 'EOF'
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -383,9 +400,8 @@ def generate_launch_description():
     ])
 EOF
 
-# gazebo.launch.py = FULL SIMULATION MODE. Boots Gazebo Harmonic, drops
-# the robot into an empty world, and auto-starts all the controllers so
-# the arm is immediately ready to accept motion commands.
+# gazebo.launch.py — FULL SIMULATION MODE: boots Gazebo Harmonic, spawns
+# the robot into an empty world, and auto-starts every controller.
 cat > ~/ros2_ws/src/my_robot_bringup/launch/gazebo.launch.py << 'EOF'
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -463,8 +479,8 @@ def generate_launch_description():
     ])
 EOF
 
-# display.rviz — a saved camera angle + display settings so RViz opens
-# already looking at the robot instead of a blank gray screen.
+# display.rviz — a saved camera angle so RViz opens already looking at the
+# robot, instead of a blank gray screen.
 cat > ~/ros2_ws/src/my_robot_bringup/rviz/display.rviz << 'EOF'
 Panels:
   - Class: rviz_common/Displays
@@ -549,8 +565,7 @@ Window Geometry:
 EOF
 
 # sample_trajectory_publisher.py — a test script that alternates the arm
-# between two poses every 3 seconds, so you can confirm the controllers
-# are actually working once Gazebo is running.
+# between two poses every 3 seconds, to confirm the controllers work.
 cat > ~/ros2_ws/src/my_robot_bringup/scripts/sample_trajectory_publisher.py << 'EOF'
 #!/usr/bin/env python3
 """
@@ -615,38 +630,82 @@ if __name__ == '__main__':
     main()
 EOF
 
-# The script above must be marked executable or `ros2 run` will refuse to run it.
+# The script above must be executable, or `ros2 run` will refuse to run it.
 chmod +x ~/ros2_ws/src/my_robot_bringup/scripts/sample_trajectory_publisher.py
+```
 
+---
 
-echo "=============================================="
-echo " STEP 5/6 — Installing dependencies & building"
-echo "=============================================="
+## Step 5 — Compile the Workspace
+
+Now that every file exists, install any missing dependencies and compile:
+
+```bash
 cd ~/ros2_ws
 
-# rosdep scans package.xml files and installs anything missing that apt
-# hasn't already covered.
+# Scans package.xml files and installs anything still missing.
 rosdep install --from-paths src --ignore-src -r -y
 
-# colcon build compiles/copies both packages into ~/ros2_ws/install.
-# --symlink-install means editing a Python/launch file later takes effect
-# immediately, without rebuilding.
+# Compiles both packages. --symlink-install means editing a Python/launch
+# file later takes effect immediately without rebuilding.
 colcon build --symlink-install
 
 # Load the newly built packages into this terminal.
 source install/setup.bash
+```
 
+💡 **Tip:** Add this line to your `~/.bashrc` so you never have to re-source manually:
+```bash
+echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
+```
 
-echo "=============================================="
-echo " STEP 6/6 — Done!"
-echo "=============================================="
-echo ""
-echo "To use this workspace in ANY new terminal, run this first:"
-echo "    source ~/ros2_ws/install/setup.bash"
-echo ""
-echo "(Tip: add that line to ~/.bashrc so it happens automatically.)"
-echo ""
-echo "Now try one of these:"
-echo "  ros2 launch my_robot_bringup display.launch.py   # RViz + manual sliders, no physics"
-echo "  ros2 launch my_robot_bringup gazebo.launch.py     # Full Gazebo Harmonic simulation"
-echo "  ros2 run my_robot_bringup sample_trajectory_publisher.py  # auto-move test (run in a 2nd terminal, after gazebo.launch.py)"
+---
+
+## Step 6 — Run It
+
+### A. Visualize only (no physics) — start here
+```bash
+cd ~/ros2_ws && source install/setup.bash
+ros2 launch my_robot_bringup display.launch.py
+```
+RViz2 and a slider GUI open. Drag the sliders to test each joint moves correctly.
+
+### B. Full physics simulation in Gazebo
+```bash
+cd ~/ros2_ws && source install/setup.bash
+ros2 launch my_robot_bringup gazebo.launch.py
+```
+Gazebo Harmonic opens with the arm spawned and all controllers active.
+
+### C. Auto-move test (run in a **second terminal**, while B is still running)
+```bash
+cd ~/ros2_ws && source install/setup.bash
+ros2 run my_robot_bringup sample_trajectory_publisher.py
+```
+The arm alternates between two poses every 3 seconds — confirms everything is wired correctly.
+
+---
+
+## Understanding the Robot Model
+
+| Part | Type | What it does |
+|---|---|---|
+| `base_link` | fixed | The mounting plate everything sits on |
+| `joint1` | revolute (±180°) | Rotates the whole arm left/right around Z |
+| `joint2` | revolute (±90°) | "Shoulder" — tilts the upper arm up/down |
+| `joint3` | revolute (±90°) | "Elbow/wrist" — tilts the forearm up/down |
+| `gripper_joint` | prismatic (±2cm) | Slides open/closed to grab things |
+
+The xacro files are split by purpose so each stays simple: `arm_core.xacro` (shape), `arm.ros2_control.xacro` (motor wiring), `arm.gazebo.xacro` (simulator hookup) — all combined by `arm.urdf.xacro`.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Package 'my_robot_bringup' not found` | Workspace not sourced in this terminal | `source ~/ros2_ws/install/setup.bash` |
+| Controller/plugin timeout in Gazebo | Missing `ros_gz`/`ros2_control` packages | `sudo apt install -y ros-jazzy-ros-gz-sim ros-jazzy-gz-ros2-control ros-jazzy-ros2-controllers` |
+| `Permission denied` running the test script | Script isn't executable | `chmod +x ~/ros2_ws/src/my_robot_bringup/scripts/sample_trajectory_publisher.py` |
+| Arm looks broken/white in RViz | Wrong Fixed Frame or no joint states | Set Fixed Frame to `base_link`; confirm `robot_state_publisher` is running |
+| Empty Gazebo window, no robot | Spawn service timed out | Re-run `ros2 launch my_robot_bringup gazebo.launch.py` |
