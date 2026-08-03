@@ -1,4 +1,4 @@
-# 3-DOF Robotic Arm — Beginner Setup Guide (No Git Clone)
+# 3-DOF Robotic Arm — Beginner Setup Guide
 
 This guide builds the **3-DOF Robotic Arm with Gripper** project from scratch on **Ubuntu 22.04**, using **ROS 2 Humble** and **Gazebo Fortress** — without cloning the repo. Every command is explained *before* you run it, and related commands are grouped into single copy-paste blocks so you're never jumping around.
 
